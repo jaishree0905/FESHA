@@ -1,0 +1,10 @@
+{
+  "name": "FESHA — Her Voice. Her Choice. Her First Step.",
+  "short_name": "FESHA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f3ea",
+  "theme_color": "#156b57",
+  "lang": "ta",
+  "icons": [{ "src": "/fesha-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
