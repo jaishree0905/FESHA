@@ -33,6 +33,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { demoResource, goals, journeyItems, languageLabels, lessons, strengths, type Goal } from './data/demo';
+import { createTeachingResponse, detectLanguage, goalFromText, languageLabel, voiceLanguageFor, type AssistantMemory, type DetectedLanguage, type ExplanationLevel, type TeachingMode } from './lib/assistant';
 import { DEMO_TRANSCRIPT, canRecognizeVoice, friendlyVoiceFallback, listenForSpeech, replayVoice, stateCopy, type VoiceLanguage } from './lib/voice';
 
 type Screen = 'home' | 'journey' | 'school' | 'help' | 'privacy' | 'shield' | 'discovery';
@@ -67,12 +68,6 @@ function StatusPill({ online }: { online: boolean }) {
   );
 }
 
-const responseForGoal = (goal: Goal, language: VoiceLanguage) => {
-  if (language === 'en-IN') return goal === 'income' ? 'Of course. We can start with one strength you already have.' : 'I will guide you one small step at a time.';
-  if (language === 'hi-IN') return goal === 'income' ? 'बिल्कुल। आपकी किसी एक ताकत से शुरुआत करते हैं।' : 'मैं आपको एक-एक छोटे कदम से रास्ता दिखाऊंगी।';
-  return goal === 'income' ? 'நிச்சயமாக. உங்களுக்கு ஏற்கனவே தெரிந்த ஒரு திறமையிலிருந்து தொடங்கலாம்.' : 'கவலை வேண்டாம். ஒரு சிறிய படியாக நான் உங்களை வழிநடத்துகிறேன்.';
-};
-
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -91,8 +86,15 @@ function App() {
   const [typedText, setTypedText] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
   const [assistantResponse, setAssistantResponse] = useState('');
+  const [assistantDraft, setAssistantDraft] = useState('');
+  const [detectedLanguage, setDetectedLanguage] = useState<DetectedLanguage>('tamil');
+  const [assistantMode, setAssistantMode] = useState<TeachingMode>('steps');
+  const [explanationLevel, setExplanationLevel] = useState<ExplanationLevel>('beginner');
+  const [memory, setMemory] = useState<AssistantMemory>({ language: 'tamil', goal: 'income', currentStep: 0, explained: [], level: 'beginner' });
   const [voiceCapability] = useState(() => canRecognizeVoice());
   const timers = useRef<number[]>([]);
+  const assistantInputRef = useRef<HTMLInputElement>(null);
+  const responseVoiceLanguage = useRef<VoiceLanguage>('ta-IN');
   const turnRef = useRef(0);
   const recognitionStop = useRef<(() => void) | null>(null);
   const safetyCloseRef = useRef<HTMLButtonElement>(null);
@@ -127,14 +129,20 @@ function App() {
 
   const processRequest = (goal: Goal, request: string, turn: number) => {
     if (turn !== turnRef.current) return;
+    const language = detectLanguage(request);
+    const resolvedGoal = goalFromText(request, goal);
+    const response = createTeachingResponse({ request, language, mode: assistantMode, level: explanationLevel, goal: resolvedGoal });
+    responseVoiceLanguage.current = voiceLanguageFor(language, selectedLanguage);
     setRequestText(request);
+    setDetectedLanguage(language);
+    setSelectedGoal(resolvedGoal);
+    setMemory((previous) => ({ ...previous, language, goal: resolvedGoal, currentStep: previous.currentStep + 1, level: explanationLevel, explained: [...previous.explained, request].slice(-6) }));
     setVoiceState('understanding');
-    const response = responseForGoal(goal, selectedLanguage);
     setAssistantResponse(response);
     schedule(() => {
       if (turn !== turnRef.current) return;
       setVoiceState('guiding');
-      const didSpeak = replayVoice(response, selectedLanguage);
+      const didSpeak = replayVoice(response, responseVoiceLanguage.current);
       setReplayMessage(didSpeak ? 'FESHA பேசுகிறது' : 'Voice replay கிடைக்கவில்லை. கீழே உள்ள பதிலைப் படிக்கலாம்.');
     }, 900);
   };
@@ -144,6 +152,7 @@ function App() {
     setSelectedGoal(goal);
     setRequestText(request);
     setAssistantResponse('');
+    setDetectedLanguage('tamil');
     setScreen('home');
     setDemoStarted(true);
     setSelectedStrength(null);
@@ -185,9 +194,9 @@ function App() {
     setSelectedStrength(strength);
     setVoiceState('guiding');
     setGuideStep(0);
-    const response = `உங்களுக்கு ${strength.tamil} பிடிக்கும் என்று புரிந்துகொண்டேன். முதலில் ஒரு சரியான training வாய்ப்பை கண்டுபிடிப்போம்.`;
+    const response = detectedLanguage === 'english' ? `I understand. ${strength.english} can be a strong place to begin. We will find one safe training step together.` : detectedLanguage === 'tanglish' ? `Purinjukitten. ${strength.english} la irundhu start pannalaam. Oru safe training step-a serndhu paakalaam.` : `உங்களுக்கு ${strength.tamil} பிடிக்கும் என்று புரிந்துகொண்டேன். முதலில் ஒரு சரியான training வாய்ப்பை கண்டுபிடிப்போம்.`;
     setAssistantResponse(response);
-    const didSpeak = replayVoice(response, selectedLanguage);
+    const didSpeak = replayVoice(response, responseVoiceLanguage.current);
     setReplayMessage(didSpeak ? 'FESHA பேசுகிறது' : 'கீழே உள்ள பதிலைப் படிக்கலாம்.');
   };
 
@@ -204,6 +213,7 @@ function App() {
     recognitionStop.current?.();
     setDemoStarted(false);
     setAssistantResponse('');
+    setAssistantDraft('');
     setSelectedStrength(null);
     setGuideStep(0);
     setVoiceState('idle');
@@ -211,16 +221,14 @@ function App() {
   };
 
   const replay = (text: string) => {
-    const didReplay = replayVoice(text, selectedLanguage);
+    const didReplay = replayVoice(text, responseVoiceLanguage.current || selectedLanguage);
     setReplayMessage(didReplay ? 'குரல் மீண்டும் ஒலிக்கிறது' : 'இந்த phone-ல் voice replay கிடைக்கவில்லை. இதை படித்துப் பார்க்கலாம்.');
   };
 
-  const submitTypedText = () => {
-    const text = typedText.trim();
-    if (!text) return;
+  const beginTypedConversation = (text: string) => {
     const turn = ++turnRef.current;
     setShowTextInput(false);
-    setSelectedGoal('income');
+    setSelectedGoal(goalFromText(text, 'income'));
     setRequestText(text);
     setAssistantResponse('');
     setDemoStarted(true);
@@ -228,11 +236,29 @@ function App() {
     setGuideStep(0);
     setScreen('home');
     setVoiceState('understanding');
-    schedule(() => processRequest('income', text, turn), 10);
+    schedule(() => processRequest(goalFromText(text, 'income'), text, turn), 10);
+  };
+
+  const submitTypedText = () => {
+    const text = typedText.trim();
+    if (!text) return;
+    setTypedText('');
+    beginTypedConversation(text);
+  };
+
+  const submitAssistantQuestion = () => {
+    const text = assistantDraft.trim();
+    if (!text) {
+      assistantInputRef.current?.focus();
+      return;
+    }
+    setAssistantDraft('');
+    beginTypedConversation(text);
   };
 
   const status = stateCopy[voiceState];
   const selectedLanguageLabel = languageLabels.find((language) => language.code === selectedLanguage)?.label ?? 'தமிழ்';
+  const detectedLanguageLabel = languageLabel(detectedLanguage);
   const currentGuide = useMemo(() => {
     if (!selectedStrength) return null;
     const steps = [
@@ -312,6 +338,23 @@ function App() {
         </div>
       </section>
 
+      <section className="assistant-panel" aria-labelledby="assistant-heading">
+        <div className="assistant-panel-head">
+          <div className="assistant-identity"><BrandMark small /><div><span className="eyebrow">FESHA ASSISTANT</span><h2 id="assistant-heading">என்ன தெரிஞ்சிக்கணும்?</h2></div></div>
+          <span className="detected-language-pill"><Languages size={14} /> {detectedLanguageLabel}</span>
+        </div>
+        <p className="assistant-promise">நீங்கள் எப்படி பேசுகிறீர்களோ, அப்படியே கேளுங்கள். தமிழில் கேட்டால் தமிழிலேயே விளக்குகிறேன். Tanglish-la ketta, Tanglish-la explain panren.</p>
+        <div className="assistant-mode-row" aria-label="Teaching mode">
+          {([['learn', '📚 Learn'], ['steps', '🪜 Step-by-step'], ['ask', '💬 Ask me'], ['check', '🧠 Check my understanding'], ['different', '🔄 Explain differently']] as Array<[TeachingMode, string]>).map(([mode, label]) => <button key={mode} className={assistantMode === mode ? 'active' : ''} onClick={() => setAssistantMode(mode)}>{label}</button>)}
+        </div>
+        <div className="assistant-compose">
+          <input ref={assistantInputRef} value={assistantDraft} onChange={(event) => { setAssistantDraft(event.target.value); if (event.target.value.trim()) setDetectedLanguage(detectLanguage(event.target.value)); }} onKeyDown={(event) => event.key === 'Enter' && submitAssistantQuestion()} placeholder="உங்கள் கேள்வியை இங்கே கேளுங்கள்" aria-label="Ask FESHA a question" />
+          <button className="assistant-mic-button" onClick={() => startListening()}><Mic size={18} /> பேசுங்கள்</button>
+          <button className="button button-primary" onClick={submitAssistantQuestion}>கேட்கலாம் <ArrowRight size={16} /></button>
+        </div>
+        <div className="assistant-level-row"><span>How much detail?</span>{([['beginner', 'Simple'], ['intermediate', 'More detail'], ['advanced', 'Deep dive']] as Array<[ExplanationLevel, string]>).map(([level, label]) => <button key={level} className={explanationLevel === level ? 'active' : ''} onClick={() => setExplanationLevel(level)}>{label}</button>)}<span className="memory-hint">Step {Math.max(memory.currentStep, 1)} · remembered for this session</span></div>
+      </section>
+
       <section className="goal-section" aria-labelledby="goal-heading">
         <div className="section-heading-row"><div><span className="eyebrow">START HERE</span><h2 id="goal-heading">அல்லது, ஒன்றைத் தேர்வு செய்யலாம்</h2></div><span className="small-hint">ஒரு option மட்டும்</span></div>
         <div className="goal-grid">
@@ -322,13 +365,14 @@ function App() {
       {demoStarted ? (
         <section className="conversation-card main-card" aria-live="polite">
           <div className="card-topline"><span className="card-kicker"><span className="live-dot" /> FESHA கேட்கிறது</span><button className="icon-button" onClick={() => replay(requestText)} aria-label="Replay voice"><Volume2 size={18} /></button></div>
-          <div className="detected-language"><Languages size={14} /> மொழி கண்டறியப்பட்டது · {selectedLanguageLabel}</div>
+          <div className="detected-language"><Languages size={14} /> {detectedLanguageLabel}</div>
           <div className="transcript-bubble"><span className="avatar user-avatar">நீ</span><p>{requestText}</p></div>
           {assistantResponse && <div className="assistant-bubble"><BrandMark small /><div><span className="assistant-label">FESHA பேசுகிறது</span><p>{assistantResponse}</p><button className="audio-link" onClick={() => replay(assistantResponse)}><Volume2 size={15} /> மீண்டும் கேட்க</button></div></div>}
           {voiceState === 'waiting' && <div className="waiting-state"><span className="mini-loader" /><p>உங்கள் குரலுக்காக காத்திருக்கிறேன்…</p></div>}
           {voiceState === 'understanding' && <div className="understanding-state"><span className="mini-loader" /><p>உங்கள் வார்த்தைகளின் அர்த்தத்தைப் புரிந்துகொள்கிறேன்…</p></div>}
           {voiceState === 'offline' && <div className="offline-card"><CloudOff size={23} /><div><strong>இந்த படிக்கு internet connection தேவைப்படுகிறது.</strong><span>கவலை வேண்டாம். இந்த demo-வை connection வந்தவுடன் தொடரலாம்.</span></div><button className="button button-outline" onClick={() => startListening()}>மீண்டும் முயற்சி</button></div>}
-          {voiceState === 'guiding' && !selectedStrength && <div className="question-block"><div className="fesha-bubble"><BrandMark small /><div><strong>நிச்சயமாக. உங்களுக்கு ஏற்கனவே தெரிந்த ஒரு திறமையிலிருந்து தொடங்கலாம்.</strong><span>உங்களுக்கு எதில் ஆர்வம் இருக்கிறது?</span></div></div><div className="strength-grid">{strengths.map((strength) => <button key={strength.id} className="strength-card" onClick={() => chooseStrength(strength)}><span className="strength-emoji">{strength.emoji}</span><span><strong>{strength.tamil}</strong><small>{strength.english}</small></span><ArrowRight size={16} /></button>)}</div></div>}
+          {voiceState === 'guiding' && !selectedStrength && selectedGoal === 'income' && <div className="question-block"><div className="fesha-bubble"><BrandMark small /><div><strong>நிச்சயமாக. உங்களுக்கு ஏற்கனவே தெரிந்த ஒரு திறமையிலிருந்து தொடங்கலாம்.</strong><span>உங்களுக்கு எதில் ஆர்வம் இருக்கிறது?</span></div></div><div className="strength-grid">{strengths.map((strength) => <button key={strength.id} className="strength-card" onClick={() => chooseStrength(strength)}><span className="strength-emoji">{strength.emoji}</span><span><strong>{strength.tamil}</strong><small>{strength.english}</small></span><ArrowRight size={16} /></button>)}</div></div>}
+          {voiceState === 'guiding' && !selectedStrength && selectedGoal !== 'income' && <div className="teaching-next-card"><span className="step-count">NEXT SMALL STEP</span><h3>இது புரிகிறதா? மெதுவாக அடுத்த கேள்விக்குப் போகலாம்.</h3><p>உங்கள் பதிலை உங்கள் வார்த்தைகளில் சொல்லுங்கள். புரியவில்லை என்றால், நான் வேறு example-ஆ விளக்குகிறேன்.</p><div className="teaching-next-actions"><button className="button button-primary" onClick={() => setAssistantMode('check')}>Check my understanding</button><button className="button button-soft" onClick={() => setAssistantMode('different')}>Explain differently</button></div></div>}
           {voiceState === 'guiding' && selectedStrength && currentGuide && <div className="guide-block"><div className="guide-intro"><span className="step-count">{currentGuide.eyebrow}</span><h3>உங்களுக்கு {selectedStrength.tamil} பிடிக்கும் என்று புரிந்துகொண்டேன்.</h3><p>{currentGuide.detail}</p></div><div className="guide-visual"><span className="pointer-ring" /><div className="guide-target"><ShieldCheck size={19} /><span>{currentGuide.target}</span></div><span className="guide-pointer"><ArrowRight size={16} /> இங்கே பாருங்கள்</span></div><button className="button button-primary button-wide" onClick={advanceGuide}>{guideStep === 0 ? 'என்னை வழிநடத்து' : guideStep >= 2 ? 'முடித்துவிட்டேன்' : 'அடுத்த படி'} <ArrowRight size={18} /></button><button className="audio-link" onClick={() => replay(currentGuide.title)}><Volume2 size={15} /> இதை கேட்க</button></div>}
           {voiceState === 'complete' && <div className="win-block"><div className="win-spark">✦</div><span className="eyebrow">FIRST DIGITAL WIN</span><h3>முதல் டிஜிட்டல் படி முடிந்தது!</h3><p>இதை நீங்கள் செய்தீர்கள். அடுத்த முறை FESHA கொஞ்சம் குறைவாக உதவும்.</p><div className="win-actions"><button className="button button-primary" onClick={() => setScreen('journey')}>என் Journey <ArrowRight size={17} /></button><button className="text-button" onClick={resetDemo}><Undo2 size={15} /> மீண்டும் தொடங்கு</button></div></div>}
         </section>

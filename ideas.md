@@ -11,15 +11,17 @@
 - **Trust is visible:** Green Shield, last-checked metadata, privacy copy and honest offline labels are part of the main interface.
 - **Warm but not childish:** rounded surfaces and illustrated signal shapes create welcome without gamification.
 - **Tamil is first-class:** Tamil copy carries the main demo, with short bilingual helper labels only where clarity benefits.
+- **Language follows the person:** FESHA detects Tamil script, English, Tanglish and mixed Tamil-English, then teaches in the language the person naturally uses.
+- **Teaching before answering:** explanations start simply, use small steps and examples, and invite a gentle understanding check.
 
 ## Color philosophy
 
-- Paper cream `#F7F3EA` keeps the canvas soft and low-glare.
-- Deep ink `#20322E` carries text with high contrast.
-- Peacock green `#156B57` is the signature trust/action color.
-- Leaf mint `#DCEFE6` creates safe surfaces and selected states.
-- Marigold `#F3B84B` is reserved for voice energy and first-win moments.
-- Coral `#D96F5B` signals a pause or safety stop, never a generic error.
+- Warm soft white `#FFF9F9` and white `#FFFFFF` keep the canvas spacious and low-glare.
+- Warm charcoal `#292326` carries text with high contrast.
+- Soft rose `#D95C68` is the confident signature action color; deeper rose `#B94350` is used for hover and emphasis.
+- Blush `#FCE8EA`, almost-white pink `#FFF1F2`, and soft pink `#F8DDE1` create safe surfaces and selected states.
+- Accent rose `#E98A93` adds warmth to voice energy and small decorative elements.
+- Deep rose `#8F3D4A` supports trust and safety panels without making the whole page red.
 - White `#FFFFFF` is used for cards and clear content grouping.
 
 ## Layout paradigm
@@ -30,10 +32,11 @@ Use a narrow mobile-first reading column with generous edge padding, one large h
 
 - A leaf-shaped microphone mark, echoing a woman’s voice becoming a new step.
 - A warm waveform made of three rounded vertical bars.
-- Small green shield badges with a check symbol and “சரிபார்க்கப்பட்டது”.
-- Marigold pulse rings around the listening control.
+- Small deep-rose shield badges with a check symbol and “சரிபார்க்கப்பட்டது”.
+- Muted rose pulse rings around the listening control.
 - A simple pointer/halo treatment for guided browser steps.
 - Tiny offline and private-session indicators that are always understandable without technical language.
+- A visible FESHA Assistant workspace with detected-language feedback, voice/type controls, learning modes, and gentle explanation-level choices.
 
 ## Interaction and motion
 
@@ -49,8 +52,8 @@ FESHA speaks like a patient older sister: short, clear, respectful, never blamin
 
 ## Wordmark and icon
 
-The wordmark is a clean uppercase `FESHA` in deep ink with a small peacock-green leaf mark. The project icon is a full-bleed square peacock-green field with a simple cream hand/leaf microphone silhouette. Avoid gradients, shadows, tiny details, baked-in rounded corners or generated typography inside the icon.
+The wordmark is a clean uppercase `FESHA` in warm charcoal with a small soft-rose leaf mark. The project icon is a full-bleed square rose field with a simple blush leaf/microphone silhouette. Avoid tiny details, baked-in rounded corners or generated typography inside the icon.
 
 ## Signature brand color
 
-Peacock green `#156B57`.
+Soft rose `#D95C68`, supported by deep rose `#8F3D4A` and blush `#FCE8EA`.
