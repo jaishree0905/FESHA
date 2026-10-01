@@ -5,6 +5,9 @@ export const DEMO_TRANSCRIPT = 'எனக்கு சம்பாதிக்�
 export const canReplayVoice = (): boolean =>
   typeof window !== 'undefined' && 'speechSynthesis' in window;
 
+export const canRecognizeVoice = (): boolean =>
+  typeof window !== 'undefined' && Boolean(window.SpeechRecognition ?? window.webkitSpeechRecognition);
+
 export const replayVoice = (text: string, lang: VoiceLanguage = 'ta-IN'): boolean => {
   if (!canReplayVoice()) return false;
   window.speechSynthesis.cancel();
@@ -24,6 +27,7 @@ type SpeechRecognitionLike = {
   stop: () => void;
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
   onerror: (() => void) | null;
+  onend: (() => void) | null;
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
@@ -39,8 +43,9 @@ export const listenForSpeech = (
   lang: VoiceLanguage,
   onText: (text: string) => void,
   onError: () => void,
+  onEnd: () => void,
 ): (() => void) | null => {
-  if (typeof window === 'undefined') return null;
+  if (!canRecognizeVoice()) return null;
   const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!Recognition) return null;
   const recognition = new Recognition();
@@ -52,6 +57,7 @@ export const listenForSpeech = (
     if (text) onText(text);
   };
   recognition.onerror = onError;
+  recognition.onend = onEnd;
   try {
     recognition.start();
   } catch {

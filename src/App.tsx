@@ -33,7 +33,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { demoResource, goals, journeyItems, languageLabels, lessons, strengths, type Goal } from './data/demo';
-import { DEMO_TRANSCRIPT, friendlyVoiceFallback, listenForSpeech, replayVoice, stateCopy, type VoiceLanguage } from './lib/voice';
+import { DEMO_TRANSCRIPT, canRecognizeVoice, friendlyVoiceFallback, listenForSpeech, replayVoice, stateCopy, type VoiceLanguage } from './lib/voice';
 
 type Screen = 'home' | 'journey' | 'school' | 'help' | 'privacy' | 'shield' | 'discovery';
 type VoiceState = keyof typeof stateCopy;
@@ -67,6 +67,12 @@ function StatusPill({ online }: { online: boolean }) {
   );
 }
 
+const responseForGoal = (goal: Goal, language: VoiceLanguage) => {
+  if (language === 'en-IN') return goal === 'income' ? 'Of course. We can start with one strength you already have.' : 'I will guide you one small step at a time.';
+  if (language === 'hi-IN') return goal === 'income' ? 'बिल्कुल। आपकी किसी एक ताकत से शुरुआत करते हैं।' : 'मैं आपको एक-एक छोटे कदम से रास्ता दिखाऊंगी।';
+  return goal === 'income' ? 'நிச்சயமாக. உங்களுக்கு ஏற்கனவே தெரிந்த ஒரு திறமையிலிருந்து தொடங்கலாம்.' : 'கவலை வேண்டாம். ஒரு சிறிய படியாக நான் உங்களை வழிநடத்துகிறேன்.';
+};
+
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -84,7 +90,10 @@ function App() {
   const [requestText, setRequestText] = useState(DEMO_TRANSCRIPT);
   const [typedText, setTypedText] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
+  const [assistantResponse, setAssistantResponse] = useState('');
+  const [voiceCapability] = useState(() => canRecognizeVoice());
   const timers = useRef<number[]>([]);
+  const turnRef = useRef(0);
   const recognitionStop = useRef<(() => void) | null>(null);
   const safetyCloseRef = useRef<HTMLButtonElement>(null);
 
@@ -116,9 +125,25 @@ function App() {
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [showSafety]);
 
+  const processRequest = (goal: Goal, request: string, turn: number) => {
+    if (turn !== turnRef.current) return;
+    setRequestText(request);
+    setVoiceState('understanding');
+    const response = responseForGoal(goal, selectedLanguage);
+    setAssistantResponse(response);
+    schedule(() => {
+      if (turn !== turnRef.current) return;
+      setVoiceState('guiding');
+      const didSpeak = replayVoice(response, selectedLanguage);
+      setReplayMessage(didSpeak ? 'FESHA பேசுகிறது' : 'Voice replay கிடைக்கவில்லை. கீழே உள்ள பதிலைப் படிக்கலாம்.');
+    }, 900);
+  };
+
   const startListening = (goal: Goal = selectedGoal, request = DEMO_TRANSCRIPT) => {
+    const turn = ++turnRef.current;
     setSelectedGoal(goal);
     setRequestText(request);
+    setAssistantResponse('');
     setScreen('home');
     setDemoStarted(true);
     setSelectedStrength(null);
@@ -133,11 +158,19 @@ function App() {
     }
     setVoiceState('waiting');
     schedule(() => {
+      if (turn !== turnRef.current) return;
       setVoiceState('listening');
-      recognitionStop.current = listenForSpeech(selectedLanguage, setRequestText, () => setRequestText(friendlyVoiceFallback));
+      let resolved = false;
+      const resolveSpeech = (text: string) => {
+        if (resolved || turn !== turnRef.current) return;
+        resolved = true;
+        recognitionStop.current?.();
+        recognitionStop.current = null;
+        processRequest(goal, text, turn);
+      };
+      recognitionStop.current = listenForSpeech(selectedLanguage, resolveSpeech, () => resolveSpeech(request), () => resolveSpeech(request));
+      if (!recognitionStop.current) schedule(() => resolveSpeech(request), 900);
     }, 280);
-    schedule(() => setVoiceState('understanding'), 1180);
-    schedule(() => setVoiceState('guiding'), 2150);
   };
 
   const chooseGoal = (goal: Goal) => {
@@ -152,6 +185,10 @@ function App() {
     setSelectedStrength(strength);
     setVoiceState('guiding');
     setGuideStep(0);
+    const response = `உங்களுக்கு ${strength.tamil} பிடிக்கும் என்று புரிந்துகொண்டேன். முதலில் ஒரு சரியான training வாய்ப்பை கண்டுபிடிப்போம்.`;
+    setAssistantResponse(response);
+    const didSpeak = replayVoice(response, selectedLanguage);
+    setReplayMessage(didSpeak ? 'FESHA பேசுகிறது' : 'கீழே உள்ள பதிலைப் படிக்கலாம்.');
   };
 
   const advanceGuide = () => {
@@ -163,7 +200,10 @@ function App() {
   };
 
   const resetDemo = () => {
+    turnRef.current += 1;
+    recognitionStop.current?.();
     setDemoStarted(false);
+    setAssistantResponse('');
     setSelectedStrength(null);
     setGuideStep(0);
     setVoiceState('idle');
@@ -178,8 +218,17 @@ function App() {
   const submitTypedText = () => {
     const text = typedText.trim();
     if (!text) return;
+    const turn = ++turnRef.current;
     setShowTextInput(false);
-    startListening('income', text);
+    setSelectedGoal('income');
+    setRequestText(text);
+    setAssistantResponse('');
+    setDemoStarted(true);
+    setSelectedStrength(null);
+    setGuideStep(0);
+    setScreen('home');
+    setVoiceState('understanding');
+    schedule(() => processRequest('income', text, turn), 10);
   };
 
   const status = stateCopy[voiceState];
@@ -232,6 +281,7 @@ function App() {
           <div className="hero-meta-row">
             <StatusPill online={isOnline} />
             <button className="text-button" onClick={() => setShowLanguage((value) => !value)}><Languages size={15} /> {selectedLanguageLabel} · 7 மொழிகள்</button>
+            <span className={`voice-ready ${voiceCapability ? 'ready' : 'fallback'}`}><Mic size={14} /> {voiceCapability ? 'Voice ready' : 'Text fallback ready'}</span>
           </div>
           {showLanguage && (
             <div className="language-popover" role="dialog" aria-label="Choose a language">
@@ -274,6 +324,7 @@ function App() {
           <div className="card-topline"><span className="card-kicker"><span className="live-dot" /> FESHA கேட்கிறது</span><button className="icon-button" onClick={() => replay(requestText)} aria-label="Replay voice"><Volume2 size={18} /></button></div>
           <div className="detected-language"><Languages size={14} /> மொழி கண்டறியப்பட்டது · {selectedLanguageLabel}</div>
           <div className="transcript-bubble"><span className="avatar user-avatar">நீ</span><p>{requestText}</p></div>
+          {assistantResponse && <div className="assistant-bubble"><BrandMark small /><div><span className="assistant-label">FESHA பேசுகிறது</span><p>{assistantResponse}</p><button className="audio-link" onClick={() => replay(assistantResponse)}><Volume2 size={15} /> மீண்டும் கேட்க</button></div></div>}
           {voiceState === 'waiting' && <div className="waiting-state"><span className="mini-loader" /><p>உங்கள் குரலுக்காக காத்திருக்கிறேன்…</p></div>}
           {voiceState === 'understanding' && <div className="understanding-state"><span className="mini-loader" /><p>உங்கள் வார்த்தைகளின் அர்த்தத்தைப் புரிந்துகொள்கிறேன்…</p></div>}
           {voiceState === 'offline' && <div className="offline-card"><CloudOff size={23} /><div><strong>இந்த படிக்கு internet connection தேவைப்படுகிறது.</strong><span>கவலை வேண்டாம். இந்த demo-வை connection வந்தவுடன் தொடரலாம்.</span></div><button className="button button-outline" onClick={() => startListening()}>மீண்டும் முயற்சி</button></div>}
