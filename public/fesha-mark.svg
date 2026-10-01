@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
-  <title id="title">FESHA leaf microphone mark</title>
-  <desc id="desc">A cream leaf shaped like a microphone on a peacock green background.</desc>
-  <rect width="256" height="256" fill="#156B57"/>
-  <path fill="#F7F3EA" d="M129 48c-30 9-53 34-53 65 0 26 15 47 39 56v23H91c-5 0-9 4-9 9s4 9 9 9h74c5 0 9-4 9-9s-4-9-9-9h-24v-23c24-9 39-30 39-56 0-31-21-56-51-65Z"/>
-  <path fill="#F3B84B" d="M129 48c14 14 25 32 27 53 3 30-10 51-34 65-24-14-37-35-34-65 2-21 13-39 27-53 5-4 9-4 14 0Z"/>
-  <path fill="#F7F3EA" d="M55 128c0 46 30 77 73 77 37 0 65-20 74-53-10 21-30 34-57 34-35 0-59-22-59-58H55Z"/>
-  <circle cx="129" cy="109" r="8" fill="#156B57"/>
+  <title id="title">FESHA rose leaf microphone mark</title>
+  <desc id="desc">A soft rose square with a confident cream leaf and microphone symbol.</desc>
+  <rect width="256" height="256" fill="#D95C68"/>
+  <path fill="#FFF1F2" d="M129 48c-30 9-53 34-53 65 0 26 15 47 39 56v23H91c-5 0-9 4-9 9s4 9 9 9h74c5 0 9-4 9-9s-4-9-9-9h-24v-23c24-9 39-30 39-56 0-31-21-56-51-65Z"/>
+  <path fill="#E98A93" d="M129 48c14 14 25 32 27 53 3 30-10 51-34 65-24-14-37-35-34-65 2-21 13-39 27-53 5-4 9-4 14 0Z"/>
+  <path fill="#FFF1F2" d="M55 128c0 46 30 77 73 77 37 0 65-20 74-53-10 21-30 34-57 34-35 0-59-22-59-58H55Z"/>
+  <circle cx="129" cy="109" r="8" fill="#D95C68"/>
 </svg>
