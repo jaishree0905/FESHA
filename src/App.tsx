@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { demoResource, goals, journeyItems, languageLabels, lessons, strengths, type Goal } from './data/demo';
 import { createTeachingResponse, detectLanguage, goalFromText, languageLabel, voiceLanguageFor, type AssistantMemory, type DetectedLanguage, type ExplanationLevel, type TeachingMode } from './lib/assistant';
-import { DEMO_TRANSCRIPT, canRecognizeVoice, friendlyVoiceFallback, listenForSpeech, replayVoice, stateCopy, type VoiceLanguage } from './lib/voice';
+import { canRecognizeVoice, friendlyVoiceFallback, listenForSpeech, replayVoice, stateCopy, stopVoice, type VoiceLanguage } from './lib/voice';
 
 type Screen = 'home' | 'journey' | 'school' | 'help' | 'privacy' | 'shield' | 'discovery';
 type VoiceState = keyof typeof stateCopy;
@@ -82,7 +82,7 @@ function App() {
   const [selectedLanguage, setSelectedLanguage] = useState<VoiceLanguage>('ta-IN');
   const [textSize, setTextSize] = useState(1);
   const [replayMessage, setReplayMessage] = useState<string | null>(null);
-  const [requestText, setRequestText] = useState(DEMO_TRANSCRIPT);
+  const [requestText, setRequestText] = useState('');
   const [typedText, setTypedText] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
   const [assistantResponse, setAssistantResponse] = useState('');
@@ -141,16 +141,35 @@ function App() {
     setAssistantResponse(response);
     schedule(() => {
       if (turn !== turnRef.current) return;
-      setVoiceState('guiding');
-      const didSpeak = replayVoice(response, responseVoiceLanguage.current);
+      setVoiceState('speaking');
+      const didSpeak = replayVoice(response, responseVoiceLanguage.current, { onStart: () => setVoiceState('speaking'), onEnd: () => setVoiceState('guiding'), onError: () => setVoiceState('guiding') });
+      if (!didSpeak) setVoiceState('guiding');
       setReplayMessage(didSpeak ? 'FESHA பேசுகிறது' : 'Voice replay கிடைக்கவில்லை. கீழே உள்ள பதிலைப் படிக்கலாம்.');
     }, 900);
   };
 
-  const startListening = (goal: Goal = selectedGoal, request = DEMO_TRANSCRIPT) => {
+  const stopListening = () => {
+    turnRef.current += 1;
+    stopVoice();
+    recognitionStop.current?.();
+    recognitionStop.current = null;
+    setVoiceState('idle');
+    setReplayMessage('கேட்பது நிறுத்தப்பட்டது');
+  };
+
+  const stopSpeaking = () => {
+    stopVoice();
+    setVoiceState(assistantResponse ? 'guiding' : 'idle');
+    setReplayMessage('குரல் நிறுத்தப்பட்டது');
+  };
+
+  const startListening = (goal: Goal = selectedGoal, request?: string) => {
     const turn = ++turnRef.current;
+    stopVoice();
+    recognitionStop.current?.();
+    recognitionStop.current = null;
     setSelectedGoal(goal);
-    setRequestText(request);
+    setRequestText(request ?? '');
     setAssistantResponse('');
     setDetectedLanguage('tamil');
     setScreen('home');
@@ -159,10 +178,13 @@ function App() {
     setGuideStep(0);
     setReplayMessage(null);
     setTypedText('');
-    recognitionStop.current?.();
-    recognitionStop.current = null;
     if (!isOnline) {
       setVoiceState('offline');
+      return;
+    }
+    if (!voiceCapability) {
+      setVoiceState('error');
+      setAssistantResponse('Voice input isn\'t supported in this browser yet. You can type your question instead.');
       return;
     }
     setVoiceState('waiting');
@@ -177,8 +199,21 @@ function App() {
         recognitionStop.current = null;
         processRequest(goal, text, turn);
       };
-      recognitionStop.current = listenForSpeech(selectedLanguage, resolveSpeech, () => resolveSpeech(request), () => resolveSpeech(request));
-      if (!recognitionStop.current) schedule(() => resolveSpeech(request), 900);
+      const failSpeech = (reason?: string) => {
+        if (resolved || turn !== turnRef.current) return;
+        resolved = true;
+        recognitionStop.current = null;
+        setVoiceState('error');
+        setAssistantResponse(reason === 'not-allowed' || reason === 'service-not-allowed'
+          ? 'Microphone permission is needed for voice conversations. Please allow microphone access in your browser settings and try again.'
+          : friendlyVoiceFallback);
+        setReplayMessage(null);
+      };
+      const endSpeech = () => {
+        if (!resolved) failSpeech();
+      };
+      recognitionStop.current = listenForSpeech(selectedLanguage, resolveSpeech, failSpeech, endSpeech, () => setVoiceState('listening'));
+      if (!recognitionStop.current) failSpeech('start');
     }, 280);
   };
 
@@ -196,7 +231,9 @@ function App() {
     setGuideStep(0);
     const response = detectedLanguage === 'english' ? `I understand. ${strength.english} can be a strong place to begin. We will find one safe training step together.` : detectedLanguage === 'tanglish' ? `Purinjukitten. ${strength.english} la irundhu start pannalaam. Oru safe training step-a serndhu paakalaam.` : `உங்களுக்கு ${strength.tamil} பிடிக்கும் என்று புரிந்துகொண்டேன். முதலில் ஒரு சரியான training வாய்ப்பை கண்டுபிடிப்போம்.`;
     setAssistantResponse(response);
-    const didSpeak = replayVoice(response, responseVoiceLanguage.current);
+    setVoiceState('speaking');
+    const didSpeak = replayVoice(response, responseVoiceLanguage.current, { onStart: () => setVoiceState('speaking'), onEnd: () => setVoiceState('guiding'), onError: () => setVoiceState('guiding') });
+    if (!didSpeak) setVoiceState('guiding');
     setReplayMessage(didSpeak ? 'FESHA பேசுகிறது' : 'கீழே உள்ள பதிலைப் படிக்கலாம்.');
   };
 
@@ -211,6 +248,8 @@ function App() {
   const resetDemo = () => {
     turnRef.current += 1;
     recognitionStop.current?.();
+    recognitionStop.current = null;
+    stopVoice();
     setDemoStarted(false);
     setAssistantResponse('');
     setAssistantDraft('');
@@ -221,7 +260,9 @@ function App() {
   };
 
   const replay = (text: string) => {
-    const didReplay = replayVoice(text, responseVoiceLanguage.current || selectedLanguage);
+    setVoiceState('speaking');
+    const didReplay = replayVoice(text, responseVoiceLanguage.current || selectedLanguage, { onStart: () => setVoiceState('speaking'), onEnd: () => setVoiceState('guiding'), onError: () => setVoiceState('guiding') });
+    if (!didReplay) setVoiceState('guiding');
     setReplayMessage(didReplay ? 'குரல் மீண்டும் ஒலிக்கிறது' : 'இந்த phone-ல் voice replay கிடைக்கவில்லை. இதை படித்துப் பார்க்கலாம்.');
   };
 
@@ -303,7 +344,7 @@ function App() {
         <div className="hero-copy">
           <span className="eyebrow"><span className="eyebrow-dot" /> முதல் டிஜிட்டல் படி</span>
           <h1>வணக்கம் <span className="wave-hand">👋</span><br /><span className="hero-question">நீங்கள் என்ன செய்ய விரும்புகிறீர்கள்?</span></h1>
-          <p className="hero-lede">உங்களுக்கு என்ன வேண்டும் என்று உங்கள் குரலில் சொல்லுங்கள். நான் ஒரு படியாக வழிகாட்டுகிறேன்.</p>
+          <p className="hero-lede">நீங்கள் பேசுங்கள். FESHA கேட்டு, புரிந்து, உங்களுக்கு விளக்கி சொல்லும்.</p>
           <div className="hero-meta-row">
             <StatusPill online={isOnline} />
             <button className="text-button" onClick={() => setShowLanguage((value) => !value)}><Languages size={15} /> {selectedLanguageLabel} · 7 மொழிகள்</button>
@@ -321,15 +362,16 @@ function App() {
         </div>
 
         <div className="voice-stage">
-          <div className={`voice-orbit ${voiceState === 'waiting' || voiceState === 'listening' || voiceState === 'understanding' ? 'active' : ''} ${voiceState === 'complete' ? 'complete' : ''}`}>
+          <div className={`voice-orbit ${voiceState === 'waiting' || voiceState === 'listening' || voiceState === 'understanding' || voiceState === 'speaking' ? 'active' : ''} ${voiceState === 'speaking' ? 'speaking' : ''} ${voiceState === 'error' ? 'error' : ''} ${voiceState === 'complete' ? 'complete' : ''}`}>
             <div className="orbit-dash" />
-            <button className="voice-orb" onClick={() => startListening()} aria-label="பேசுங்கள் — Speak to FESHA">
+            <button className="voice-orb" onClick={() => (voiceState === 'listening' || voiceState === 'waiting' ? stopListening() : startListening())} aria-label={voiceState === 'listening' ? 'Stop listening' : 'பேசுங்கள் — Speak to FESHA'} aria-pressed={voiceState === 'listening'}>
               <span className="voice-orb-glow" />
-              <Mic size={38} strokeWidth={1.9} />
-              <span className="voice-orb-label">{voiceState === 'idle' || voiceState === 'offline' ? 'பேசுங்கள்' : voiceState === 'waiting' ? 'காத்திருக்கிறது' : voiceState === 'complete' ? 'முடிந்தது' : 'கேட்கிறேன்'}</span>
+              {voiceState === 'speaking' ? <Volume2 size={38} strokeWidth={1.9} /> : <Mic size={38} strokeWidth={1.9} />}
+              <span className="voice-orb-label">{voiceState === 'idle' || voiceState === 'offline' ? 'பேச தொடங்குங்கள்' : voiceState === 'waiting' ? 'காத்திருக்கிறது' : voiceState === 'understanding' ? 'புரிந்துகொள்கிறேன்' : voiceState === 'speaking' ? 'பேசுகிறேன்' : voiceState === 'error' ? 'மீண்டும் முயற்சி' : voiceState === 'complete' ? 'முடிந்தது' : 'கேட்கிறேன்'}</span>
             </button>
             <div className="waveform" aria-hidden="true"><i /><i /><i /><i /><i /></div>
           </div>
+          {(voiceState === 'waiting' || voiceState === 'listening') && <button className="voice-stop" onClick={stopListening}><Pause size={15} /> நிறுத்துங்கள்</button>}
           <div className="voice-state" aria-live="polite">
             <strong>{status.tamil}</strong>
             <span>{status.english}</span>
@@ -367,7 +409,7 @@ function App() {
           <div className="card-topline"><span className="card-kicker"><span className="live-dot" /> FESHA கேட்கிறது</span><button className="icon-button" onClick={() => replay(requestText)} aria-label="Replay voice"><Volume2 size={18} /></button></div>
           <div className="detected-language"><Languages size={14} /> {detectedLanguageLabel}</div>
           <div className="transcript-bubble"><span className="avatar user-avatar">நீ</span><p>{requestText}</p></div>
-          {assistantResponse && <div className="assistant-bubble"><BrandMark small /><div><span className="assistant-label">FESHA பேசுகிறது</span><p>{assistantResponse}</p><button className="audio-link" onClick={() => replay(assistantResponse)}><Volume2 size={15} /> மீண்டும் கேட்க</button></div></div>}
+          {assistantResponse && <div className={`assistant-bubble ${voiceState === 'error' ? 'assistant-error' : ''}`}><BrandMark small /><div><span className="assistant-label">{voiceState === 'error' ? 'FESHA உதவி' : voiceState === 'speaking' ? 'FESHA பேசுகிறது…' : 'FESHA பேசுகிறது'}</span><p>{assistantResponse}</p>{voiceState !== 'error' && <span className="assistant-audio-actions"><button className="audio-link" onClick={() => replay(assistantResponse)}><Volume2 size={15} /> மீண்டும் கேட்க</button><button className="audio-link" onClick={stopSpeaking}><Pause size={15} /> நிறுத்த</button></span>}</div></div>}
           {voiceState === 'waiting' && <div className="waiting-state"><span className="mini-loader" /><p>உங்கள் குரலுக்காக காத்திருக்கிறேன்…</p></div>}
           {voiceState === 'understanding' && <div className="understanding-state"><span className="mini-loader" /><p>உங்கள் வார்த்தைகளின் அர்த்தத்தைப் புரிந்துகொள்கிறேன்…</p></div>}
           {voiceState === 'offline' && <div className="offline-card"><CloudOff size={23} /><div><strong>இந்த படிக்கு internet connection தேவைப்படுகிறது.</strong><span>கவலை வேண்டாம். இந்த demo-வை connection வந்தவுடன் தொடரலாம்.</span></div><button className="button button-outline" onClick={() => startListening()}>மீண்டும் முயற்சி</button></div>}

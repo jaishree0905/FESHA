@@ -40,7 +40,7 @@ Use a narrow mobile-first reading column with generous edge padding, one large h
 
 ## Interaction and motion
 
-Motion should explain state, not decorate it. The microphone pulse grows only while listening. The waveform moves while understanding. Guidance cards slide in with a short ease-out. Respect `prefers-reduced-motion` by freezing pulses and using instant state changes. All interactive targets are at least 48px tall and every icon button has visible text or an accessible name.
+Motion should explain state, not decorate it. The microphone pulse grows only while listening or speaking; idle motion stays still. The real voice lifecycle is **idle → listening → processing → speaking → guiding**, with a manual stop and friendly permission/error fallback. The waveform moves while understanding. Guidance cards slide in with a short ease-out. Respect `prefers-reduced-motion` by freezing pulses and using instant state changes. All interactive targets are at least 48px tall and every icon button has visible text or an accessible name.
 
 ## Typography system
 
